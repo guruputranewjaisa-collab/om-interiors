@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Om Interiors — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Yatra+One&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ivory:#F4EAD9; --ink:#2E1E14; --ink-soft:#5C4534;
+    --maroon:#7A1E2B; --maroon-deep:#591420; --gold:#B8862E; --line:rgba(46,30,20,0.16);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ background:var(--ivory); color:var(--ink); font-family:'Mukta',sans-serif; padding:0 5vw 80px; }
+  header{
+    padding:32px 0 24px; border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;
+  }
+  h1{ font-family:'Yatra One',cursive; font-weight:400; font-size:28px; color:var(--maroon-deep); }
+  .stats{ display:flex; gap:24px; }
+  .stat{ text-align:center; }
+  .stat .n{ font-family:'Yatra One',cursive; font-size:24px; color:var(--maroon-deep); }
+  .stat .l{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); }
+  table{ width:100%; border-collapse:collapse; margin-top:30px; }
+  th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--ink-soft); padding:12px 14px; border-bottom:1px solid var(--line);
+  }
+  td{ padding:16px 14px; border-bottom:1px solid var(--line); font-size:14px; vertical-align:top; }
+  tr:hover td{ background:rgba(122,30,43,0.03); }
+  .msg-cell{ max-width:320px; line-height:1.5; color:var(--ink-soft); }
+  .status{
+    display:inline-block; padding:4px 10px; border-radius:12px; font-size:11px;
+    text-transform:uppercase; letter-spacing:.04em; font-weight:600;
+  }
+  .status.new{ background:rgba(122,30,43,0.12); color:var(--maroon-deep); }
+  .status.contacted{ background:rgba(184,134,46,0.16); color:var(--gold); }
+  .status.closed{ background:rgba(46,30,20,0.1); color:var(--ink-soft); }
+  select, button.action{
+    font-family:'Mukta',sans-serif; font-size:12px; padding:6px 8px; border-radius:3px;
+    border:1px solid var(--line); background:var(--ivory); color:var(--ink); cursor:pointer;
+  }
+  button.delete{ border-color:var(--maroon); color:var(--maroon-deep); margin-left:6px; }
+  .empty{ padding:60px 0; text-align:center; color:var(--ink-soft); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>ॐ Om Interiors — Inquiries</h1>
+    <div class="stats" id="stats"></div>
+  </header>
+  <table id="table">
+    <thead>
+      <tr><th>Date</th><th>Name</th><th>Email</th><th>Project type</th><th>Message</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="empty" class="empty" style="display:none;">No inquiries yet — once your contact form is used, they'll show up here.</div>
+
+<script>
+async function load() {
+  const res = await fetch('/api/inquiries');
+  const data = await res.json();
+  const rows = document.getElementById('rows');
+  const empty = document.getElementById('empty');
+  rows.innerHTML = '';
+
+  if (!data.inquiries || data.inquiries.length === 0) {
+    empty.style.display = 'block';
+    document.getElementById('table').style.display = 'none';
+  } else {
+    empty.style.display = 'none';
+    document.getElementById('table').style.display = 'table';
+  }
+
+  const counts = { new: 0, contacted: 0, closed: 0 };
+  data.inquiries.forEach(inq => {
+    counts[inq.status] = (counts[inq.status] || 0) + 1;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${new Date(inq.created_at).toLocaleDateString()}</td>
+      <td>${escapeHtml(inq.name)}</td>
+      <td>${escapeHtml(inq.email)}</td>
+      <td>${escapeHtml(inq.project_type || '')}</td>
+      <td class="msg-cell">${escapeHtml(inq.message)}</td>
+      <td><span class="status ${inq.status}">${inq.status}</span></td>
+      <td>
+        <select data-id="${inq.id}" class="status-select">
+          <option value="new" ${inq.status==='new'?'selected':''}>New</option>
+          <option value="contacted" ${inq.status==='contacted'?'selected':''}>Contacted</option>
+          <option value="closed" ${inq.status==='closed'?'selected':''}>Closed</option>
+        </select>
+        <button class="action delete" data-id="${inq.id}">Delete</button>
+      </td>
+    `;
+    rows.appendChild(tr);
+  });
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="n">${counts.new||0}</div><div class="l">New</div></div>
+    <div class="stat"><div class="n">${counts.contacted||0}</div><div class="l">Contacted</div></div>
+    <div class="stat"><div class="n">${counts.closed||0}</div><div class="l">Closed</div></div>
+  `;
+
+  document.querySelectorAll('.status-select').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      await fetch(`/api/inquiries/${sel.dataset.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: sel.value })
+      });
+      load();
+    });
+  });
+
+  document.querySelectorAll('.delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this inquiry?')) return;
+      await fetch(`/api/inquiries/${btn.dataset.id}`, { method: 'DELETE' });
+      load();
+    });
+  });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+load();
+</script>
+</body>
+</html>
